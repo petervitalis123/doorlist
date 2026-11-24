@@ -1217,7 +1217,7 @@ function viewEvent(id){
     '<aside class="panel sticky"><h2>'+ic("ticket")+'Pick your tickets</h2>'+(ev.cancelled?'<p class="note-test">'+ic("x")+' This event was cancelled. Tickets are no longer on sale.</p>':inviteBox(ev,locked))+tiers+wlFormHTML(ev)+
     '<div style="margin-top:6px"><div class="sumline"><span>'+qty+' ticket'+(qty===1?"":"s")+'</span><b>'+money(sub)+'</b></div>'+
     '<button class="btn primary block addbtn" data-act="add" '+(qty?"":"disabled")+'>'+ic("cart")+' Add to cart</button>'+
-    '<p class="fine">Up to '+MAXQ+' per tier.'+(ev.perPerson?' Limit '+ev.perPerson+' per person.':'')+' A '+Math.round(FEE*100)+'% service fee applies at checkout.'+(ev.tiers.some(function(t){return t.student})?' Student tickets need a school email ('+esc(studentList(ev).join(", "))+') at checkout and your student ID at the door.':'')+'</p></div></aside></div></div>';
+    '<p class="fine"><b>Refunds:</b> '+esc(refundText(ev))+'</p><p class="fine">Up to '+MAXQ+' per tier.'+(ev.perPerson?' Limit '+ev.perPerson+' per person.':'')+' A '+Math.round(FEE*100)+'% service fee applies at checkout.'+(ev.tiers.some(function(t){return t.student})?' Student tickets need a school email ('+esc(studentList(ev).join(", "))+') at checkout and your student ID at the door.':'')+'</p></div></aside></div></div>';
   if(vsheet&&vsheet.evId===ev.id)app.insertAdjacentHTML("beforeend",vsheetHTML(ev));
   app.classList.add("has-bar");
   bar.innerHTML='<div class="buybar"><a class="btn cartlink" href="#cart" aria-label="Open cart">'+ic("cart")+'<span class="count" id="barcount" hidden style="position:absolute;top:-6px;right:-6px">0</span></a>'+
@@ -1231,7 +1231,7 @@ function viewCart(){
     app.innerHTML='<h1 style="font-size:clamp(28px,6vw,44px);font-weight:900;margin:8px 0 18px">Your cart</h1><div class="empty">'+ic("cart")+' Nothing in your cart yet.<br><br><a class="btn primary" href="#events">Browse events</a></div>';return}
   var lines=st.cart.map(function(l,i){
     var ev=EV(l.evId),t=TR(ev,l.tierId);if(!t)return "";var max=Math.min(MAXQ,left(ev,t));
-    return '<div class="line"><div><h3>'+esc(ev.title)+'</h3><div class="sub">'+esc(t.name)+' · '+esc(dShort(ev))+' · '+priceShort(t.price)+' each</div>'+
+    return '<div class="line"><div><h3>'+esc(ev.title)+'</h3><div class="sub">'+esc(t.name)+' · '+esc(dShort(ev))+' · '+priceShort(t.price)+' each</div><div class="fine" style="margin:2px 0 4px">Refunds: '+esc(refundText(ev))+'</div>'+
       '<button class="btn link" data-act="rm" data-i="'+i+'">'+ic("trash")+' Remove</button></div>'+
       '<div class="stepper"><button data-act="cdec" data-i="'+i+'" aria-label="Fewer">'+ic("minus")+'</button><output class="'+(popKey==="c:"+i?"pop":"")+'">'+l.qty+'</output><button data-act="cinc" data-i="'+i+'" '+(l.qty>=max?"disabled":"")+' aria-label="More">'+ic("plus")+'</button></div>'+
       '<div class="lt">'+money(t.price*l.qty)+'</div></div>';
@@ -1324,7 +1324,7 @@ function ticketHTML(tk,name,i,drop){
   if(ref)tctl='<p class="fine" style="margin:12px 0 0">Refunded '+esc(dtTxt(tdoc.refundedAt||Date.now()))+'. Test mode: no money moved.</p>';
   else if(tmv)tctl='<p class="fine" style="margin:12px 0 0">Transferred '+esc(dtTxt(tdoc.transferredAt||Date.now()))+'. This ticket no longer works at the door.</p>';
   else if(tdoc&&tdoc.status==="valid"&&(ev.cancelled||dt(ev).getTime()>Date.now())&&(!tdoc.buyer||tdoc.buyer===me())){
-    var tb='<button class="btn sm" data-act="tkcancel" data-c="'+esc(tk.code)+'">'+ic("x")+' Cancel ticket</button>';
+    var tb=refundAllows(ev)?'<button class="btn sm" data-act="tkcancel" data-c="'+esc(tk.code)+'">'+ic("x")+' Cancel ticket</button>':'<span class="fine" style="margin:0">Refunds: '+esc(refundText(ev))+'</span>';
     if(tdoc.xferCode)tctl='<div class="note-test" style="margin:12px 0 0;flex-wrap:wrap"><span>'+ic("share")+' Transfer code <b style="font-family:var(--mono)">'+esc(tdoc.xferCode)+'</b></span></div><div class="tctl"><button class="btn sm" data-act="copy" data-v="'+esc(tdoc.xferCode)+'">Copy code</button><button class="btn sm" data-act="copy" data-v="'+esc(xferLink(tdoc.xferCode))+'">Copy link</button><button class="btn sm" data-act="xferoff" data-c="'+esc(tk.code)+'">Cancel transfer</button></div>';
     else tctl='<div class="tctl">'+(xferBlock(tdoc,ev)?"":'<button class="btn sm" data-act="xfer" data-c="'+esc(tk.code)+'">'+ic("share")+' Send to a friend</button>')+tb+'</div>';
   }
@@ -1969,6 +1969,16 @@ function ticketPng(td,ev,t){
     c.toBlob(function(b){res(b)},"image/png");
   });
 }
+
+/* ---- refund policy per event ---- */
+var REF_OPTS=[["none","No refunds, unless the event is cancelled"],["h48","Refunds up to 48 hours before the event"],["d7","Refunds up to 7 days before the event"],["custom","Custom: I'll write my own"]];
+function refundOf(ev){var r=ev.refund||{};return{mode:REF_OPTS.some(function(o){return o[0]===r.mode})?r.mode:"none",note:r.note||""}}
+function refundText(ev){var r=refundOf(ev),t=r.mode==="custom"?(r.note||"Ask the host before buying."):REF_OPTS.filter(function(o){return o[0]===r.mode})[0][1];return t+(r.mode==="custom"&&r.note?"":"")+". If the host cancels the event, every ticket is refunded."}
+function refundAllows(ev){if(ev.cancelled)return true;var r=refundOf(ev),h=(dt(ev).getTime()-Date.now())/3600000;return r.mode==="h48"?h>=48:r.mode==="d7"?h>=168:false}
+function refundFieldHTML(){
+  return '<div class="field" style="margin-top:14px"><label for="fe-refund">Refund policy</label><select id="fe-refund" class="sort">'+REF_OPTS.map(function(o){return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'}).join("")+'</select>'+
+    '<input id="fe-refnote" maxlength="200" placeholder="Write your policy, for example: Refunds until Friday noon, minus the service fee." style="margin-top:8px" hidden><p class="fine" style="margin:6px 0 0">Guests see this on the event page and at checkout. Doorlist provides the refund tool and you decide who gets a refund. Cancelled events are always refunded in full.</p></div>';
+}
 function ctPay(c){return{id:c.id,title:c.title+" (voting)",hosted:true,host:c.host,cancelled:!!c.cancelled,date:c.close,_c:c}}
 function payItems(){var l=st.hosted.filter(mineE);st.contests.forEach(function(c){if(!ctMine(c))return;var it=ctPay(c);if(salesOf(it).rev>0||st.payouts.some(function(x){return x.evId===c.id}))l.push(it)});return l}
 function payItem(id){var e=EV(id);if(e)return e;var c=ctOf(id);return c?ctPay(c):null}
@@ -2224,7 +2234,7 @@ function viewHostForm(eid){
     '<div class="field"><label for="fe-date">Starts</label><input id="fe-date" type="datetime-local" value="'+lcl(d)+'"></div>'+
     '<div class="frow"><div class="field"><label for="fe-venue">Venue name</label><input id="fe-venue" placeholder="Skyline Rooftop" maxlength="60"></div><div class="field"><label for="fe-area">Area</label><input id="fe-area" placeholder="Eastside" maxlength="40"></div></div>'+
     '<div class="field"><label for="fe-blurb">Description</label><textarea id="fe-blurb" rows="3" maxlength="400" placeholder="What is the night about, what should guests expect?"></textarea></div>'+imgField()+
-    '<h2 style="margin:18px 0 12px">'+ic("ticket")+'Tickets</h2>'+rows+promoRows()+extrasHTML(base)+
+    '<h2 style="margin:18px 0 12px">'+ic("ticket")+'Tickets</h2>'+rows+promoRows()+refundFieldHTML()+extrasHTML(base)+
     '<label class="switch" for="fe-secret"><input type="checkbox" id="fe-secret"><span class="knob"></span><span><b>Make this a secret event</b><small>Guests see the area and a lock tag. The exact address is revealed to ticket holders at the time you set.</small></span></label>'+
     '<div id="secbox" hidden><div class="field"><label for="fe-addr">Exact address</label><input id="fe-addr" placeholder="14 Marlow Close, Eastside" maxlength="120"></div>'+
     '<div class="field"><label for="fe-reveal">Reveal the address at</label><input id="fe-reveal" type="datetime-local" value="'+lcl(rv)+'"></div>'+
@@ -2258,6 +2268,7 @@ function fillEdit(ev){
     sb.insertAdjacentHTML("beforeend",'<p class="fine">Access: '+(ev.access==="invite"?"Invite only":"Open")+'. Secret and access settings can\'t be switched after publishing.</p>');
   }else sb.insertAdjacentHTML("beforebegin",'<p class="fine">An event can\'t be switched to secret after publishing.</p>');
   var pc=ev.imgPos||"center",rd=document.querySelector('input[name="fe-pos"][value="'+pc+'"]');if(rd)rd.checked=true;
+  g("fe-refund").value=refundOf(ev).mode;g("fe-refnote").value=refundOf(ev).note;g("fe-refnote").hidden=refundOf(ev).mode!=="custom";
   g("fe-slug").value=ev.slug||"";g("fe-pp").value=ev.perPerson||"";g("fe-sd").value=(ev.studentDomains||[]).join(", ");
   for(var x=1;x<=3;x++){var tx=TR(ev,"t"+x);if(tx){g("ft-s"+x).checked=!!tx.student;g("ft-ss"+x).value=tx.saleStart||"";g("ft-pw"+x).value=tx.pass||""}}
   if(typeof ev.lat==="number"){formGeo={lat:ev.lat,lng:ev.lng,key:ev.geoKey||"",label:"saved location"};g("geostat").textContent="A map location is saved. Tap Find this place to update it."}
@@ -2310,6 +2321,7 @@ function createEvent(){
       promos.push({code:pcode,type:ptype,value:Math.round(pval*100)/100,limit:plim||0,expires:pexp||"",on:oldp?oldp.on!==false:true});
     }
   }
+  if(!err&&g("fe-refund").value==="custom"&&!g("fe-refnote").value.trim())err="Write your refund policy, or pick one of the standard options.";
   var sc={ok:true,v:""},pp=0,sdom=null;
   if(!err){sc=slugCheck(g("fe-slug").value,base?base.id:"");if(!sc.ok)err=sc.msg}
   if(!err){var ppv=g("fe-pp").value.trim();pp=ppv?parseInt(ppv,10):0;if(isNaN(pp)||pp<0||pp>50)err="Tickets per person must be a number from 1 to 50, or empty for no limit."}
@@ -2330,7 +2342,7 @@ function createEvent(){
   }
   if(err){g("herr").textContent=err;return}
   var fields={title:title,cat:cat,emo:CATEMO[cat],date:date,venue:secret?"Secret location":venue,area:area,age:age,c:CATCOL[cat],
-    promos:promos,slug:sc.v,perPerson:pp,studentDomains:sdom||[],blurb:blurb||"Hosted on Doorlist.",sched:[[start.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),"Doors open"]],tiers:tiers};
+    promos:promos,refund:{mode:g("fe-refund").value,note:g("fe-refund").value==="custom"?g("fe-refnote").value.trim():""},slug:sc.v,perPerson:pp,studentDomains:sdom||[],blurb:blurb||"Hosted on Doorlist.",sched:[[start.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),"Doors open"]],tiers:tiers};
   var ev=base?Object.assign({},base,fields):Object.assign({id:"h-"+Date.now().toString(36),hosted:true,host:me(),hostName:(st.org&&st.org.brand)||"",created:Date.now()},fields);
   var secrets=null;
   if(base){
@@ -2477,7 +2489,7 @@ var LEGAL={
   ["Your choices","You can ask to see or delete your data at [contact email]. Placeholder text."],
   ["Retention and security","How long data is kept and how it is protected goes here. Placeholder text."]]],
  refunds:["Refund policy",[
-  ["Guest cancellations","Guests can cancel an unused ticket from My tickets. The host's refund rules decide whether money is returned. Placeholder text."],
+  ["Guest cancellations","Guests can cancel an unused ticket from My tickets. The host's refund policy for that event, shown on the event page and at checkout, decides whether money is returned. Placeholder text."],
   ["Host refunds","Hosts can refund any unused ticket from the guest list. Placeholder text."],
   ["Cancelled events","If a host cancels an event, every ticket is refunded in full. Placeholder text."],
   ["Timing","Refunds go back to the original payment method within [number] business days. Placeholder text."],
@@ -3294,6 +3306,7 @@ document.addEventListener("click",function(e){
   if(a==="tkcancel"){
     var tc=b.getAttribute("data-c"),tdd=tkOf(tc);if(!tdd)return;
     if(tdd.buyer&&tdd.buyer!==me()){toast("Only the person who bought this ticket can cancel it.");return}
+    var evG=EV(tdd.evId);if(evG&&!refundAllows(evG)){toast("This event's refund policy doesn't allow cancelling now. Contact the host.");return}
     if(!arm(b,ic("x")+" Tap again to cancel"))return;
     var evT=EV(tdd.evId),priceT=unitOf(tdd);
     refundTicket(tc,"guest").then(function(ok){if(!ok)return;render();toast(priceT>0?"Ticket cancelled. In a live version "+money(priceT)+" would go back to your card. Test mode: nothing was charged.":"Ticket cancelled. The spot is back on sale.")});
@@ -3447,6 +3460,7 @@ document.addEventListener("input",function(e){
 });
 document.addEventListener("change",function(e){
   if(e.target.id==="sort"){filt.sort=e.target.value;if(filt.sort==="near"&&!st.loc){nearLocate();return}fillGrid()}
+  if(e.target.id==="fe-refund"){document.getElementById("fe-refnote").hidden=e.target.value!=="custom"}
   if(e.target.id==="rad"){filt.r=parseInt(e.target.value,10)||25;fillGrid()}
   if(e.target.name==="fe-pos")paintImg();
   if(e.target.id==="fe-img"&&e.target.files&&e.target.files[0]){
